@@ -91,19 +91,140 @@ else:
 # Summary metrics
 col1, col2, col3, col4 = st.columns(4)
 
-total_travel_savings = travel_filtered[travel_filtered['Is Down']]['Change ($)'].sum() * -1
-total_tb_savings = tb_filtered[tb_filtered['Is Down']]['Change ($)'].sum() * -1
+# Calculate savings (positive) and increases (positive amounts)
+travel_savings = travel_filtered[travel_filtered['Is Down']]['Change ($)'].sum() * -1  # Convert negative to positive
+travel_increases = travel_filtered[~travel_filtered['Is Down']]['Change ($)'].sum()  # Already positive
+
+tb_savings = tb_filtered[tb_filtered['Is Down']]['Change ($)'].sum() * -1  # Convert negative to positive
+tb_increases = tb_filtered[~tb_filtered['Is Down']]['Change ($)'].sum()  # Already positive
+
+# Calculate net change
+total_travel_change = travel_filtered['Change ($)'].sum()  # Can be negative or positive
+total_tb_change = tb_filtered['Change ($)'].sum()  # Can be negative or positive
 
 with col1:
-    st.metric("Travel Savings", f"${total_travel_savings:,.0f}")
+    # Show total savings (positive) minus increases (shown as negative if increases exist)
+    if travel_increases > 0:
+        # If there are increases, show net (savings - increases)
+        travel_net = travel_savings - travel_increases
+        st.metric("Travel Savings", f"${travel_net:,.0f}")
+    else:
+        # If no increases, just show savings
+        st.metric("Travel Savings", f"${travel_savings:,.0f}")
 with col2:
-    st.metric("Team Building Savings", f"${total_tb_savings:,.0f}")
+    if tb_increases > 0:
+        tb_net = tb_savings - tb_increases
+        st.metric("Team Building Savings", f"${tb_net:,.0f}")
+    else:
+        st.metric("Team Building Savings", f"${tb_savings:,.0f}")
 with col3:
-    st.metric("Total Savings", f"${total_travel_savings + total_tb_savings:,.0f}")
+    total_savings = travel_savings + tb_savings
+    total_increases = travel_increases + tb_increases
+    if total_increases > 0:
+        total_net = total_savings - total_increases
+        st.metric("Total Savings", f"${total_net:,.0f}")
+    else:
+        st.metric("Total Savings", f"${total_savings:,.0f}")
 with col4:
-    travel_decreased = len(travel_filtered[travel_filtered['Is Down']])
-    tb_decreased = len(tb_filtered[tb_filtered['Is Down']])
-    st.metric("Verticals with Decreases", f"{travel_decreased + tb_decreased}")
+    # Count unique verticals that had decreases in either travel or team building
+    travel_decreased_verticals = set(travel_filtered[travel_filtered['Is Down']]['Vertical'].tolist())
+    tb_decreased_verticals = set(tb_filtered[tb_filtered['Is Down']]['Vertical'].tolist())
+    unique_decreased_verticals = travel_decreased_verticals.union(tb_decreased_verticals)
+    st.metric("Verticals Who Saved Money", f"{len(unique_decreased_verticals)}")
+
+# Breakdown section
+with st.expander("📋 Breakdown: Who Saved Money & Where", expanded=False):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("✅ Verticals Who Saved Money")
+        
+        # Verticals that saved in Travel
+        travel_saved = set(travel_filtered[travel_filtered['Is Down']]['Vertical'].tolist())
+        # Verticals that saved in Team Building
+        tb_saved = set(tb_filtered[tb_filtered['Is Down']]['Vertical'].tolist())
+        # Verticals that saved in both
+        saved_both = travel_saved.intersection(tb_saved)
+        # Verticals that saved only in Travel
+        saved_travel_only = travel_saved - tb_saved
+        # Verticals that saved only in Team Building
+        saved_tb_only = tb_saved - travel_saved
+        
+        if saved_both:
+            st.write("**Saved in BOTH Travel & Team Building:**")
+            for v in sorted(saved_both):
+                try:
+                    travel_amt = travel_filtered[(travel_filtered['Vertical'] == v) & (travel_filtered['Is Down'])]['Change ($)'].values[0] * -1
+                except:
+                    travel_amt = 0
+                try:
+                    tb_amt = tb_filtered[(tb_filtered['Vertical'] == v) & (tb_filtered['Is Down'])]['Change ($)'].values[0] * -1
+                except:
+                    tb_amt = 0
+                st.write(f"  • {v}: ${travel_amt:,.0f} (Travel) + ${tb_amt:,.0f} (Team Building) = ${travel_amt + tb_amt:,.0f} total")
+        
+        if saved_travel_only:
+            st.write("**Saved in Travel Only:**")
+            for v in sorted(saved_travel_only):
+                try:
+                    amt = travel_filtered[(travel_filtered['Vertical'] == v) & (travel_filtered['Is Down'])]['Change ($)'].values[0] * -1
+                    st.write(f"  • {v}: ${amt:,.0f}")
+                except:
+                    pass
+        
+        if saved_tb_only:
+            st.write("**Saved in Team Building Only:**")
+            for v in sorted(saved_tb_only):
+                try:
+                    amt = tb_filtered[(tb_filtered['Vertical'] == v) & (tb_filtered['Is Down'])]['Change ($)'].values[0] * -1
+                    st.write(f"  • {v}: ${amt:,.0f}")
+                except:
+                    pass
+    
+    with col2:
+        st.subheader("❌ Verticals Who Spent More")
+        
+        # Verticals that increased in Travel
+        travel_increased = set(travel_filtered[~travel_filtered['Is Down']]['Vertical'].tolist())
+        # Verticals that increased in Team Building
+        tb_increased = set(tb_filtered[~tb_filtered['Is Down']]['Vertical'].tolist())
+        # Verticals that increased in both
+        increased_both = travel_increased.intersection(tb_increased)
+        # Verticals that increased only in Travel
+        increased_travel_only = travel_increased - tb_increased
+        # Verticals that increased only in Team Building
+        increased_tb_only = tb_increased - travel_increased
+        
+        if increased_both:
+            st.write("**Spent More in BOTH Travel & Team Building:**")
+            for v in sorted(increased_both):
+                try:
+                    travel_amt = travel_filtered[(travel_filtered['Vertical'] == v) & (~travel_filtered['Is Down'])]['Change ($)'].values[0]
+                except:
+                    travel_amt = 0
+                try:
+                    tb_amt = tb_filtered[(tb_filtered['Vertical'] == v) & (~tb_filtered['Is Down'])]['Change ($)'].values[0]
+                except:
+                    tb_amt = 0
+                st.write(f"  • {v}: ${travel_amt:,.0f} (Travel) + ${tb_amt:,.0f} (Team Building) = ${travel_amt + tb_amt:,.0f} total")
+        
+        if increased_travel_only:
+            st.write("**Spent More in Travel Only:**")
+            for v in sorted(increased_travel_only):
+                try:
+                    amt = travel_filtered[(travel_filtered['Vertical'] == v) & (~travel_filtered['Is Down'])]['Change ($)'].values[0]
+                    st.write(f"  • {v}: ${amt:,.0f}")
+                except:
+                    pass
+        
+        if increased_tb_only:
+            st.write("**Spent More in Team Building Only:**")
+            for v in sorted(increased_tb_only):
+                try:
+                    amt = tb_filtered[(tb_filtered['Vertical'] == v) & (~tb_filtered['Is Down'])]['Change ($)'].values[0]
+                    st.write(f"  • {v}: ${amt:,.0f}")
+                except:
+                    pass
 
 # Tabs for different views
 tab1, tab2, tab3 = st.tabs(["📈 Travel Expenses", "🎯 Team Building", "📊 Combined View"])
@@ -134,16 +255,25 @@ with tab1:
         ax1.grid(axis='y', alpha=0.3)
         ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x/1000:.0f}K'))
         
-        # Change chart
-        colors = ['#2ecc71' if x < 0 else '#e74c3c' for x in travel_sorted['Change ($)']]
-        ax2.barh(range(len(travel_sorted)), travel_sorted['Change ($)'], color=colors, alpha=0.7)
+        # Change chart - flip sign so increases show as negative (money spent more)
+        change_values = -travel_sorted['Change ($)']  # Flip sign
+        colors = ['#e74c3c' if x < 0 else '#2ecc71' for x in change_values]
+        bars = ax2.barh(range(len(travel_sorted)), change_values, color=colors, alpha=0.7)
         ax2.set_yticks(range(len(travel_sorted)))
         ax2.set_yticklabels(travel_sorted['Vertical'], fontsize=9)
         ax2.set_xlabel('Change ($)', fontsize=10, fontweight='bold')
-        ax2.set_title('Change from Sep to Oct', fontsize=12, fontweight='bold')
+        ax2.set_title('Change from Sep to Oct (Negative = Spent More)', fontsize=12, fontweight='bold')
         ax2.axvline(x=0, color='black', linestyle='--', linewidth=0.8)
         ax2.grid(axis='x', alpha=0.3)
         ax2.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x/1000:.0f}K'))
+        
+        # Add value labels on bars
+        for i, (bar, val) in enumerate(zip(bars, change_values)):
+            width = bar.get_width()
+            label_x = width if width >= 0 else width
+            ax2.text(label_x, bar.get_y() + bar.get_height()/2, 
+                    f'${abs(val):,.0f}', ha='left' if width >= 0 else 'right', 
+                    va='center', fontsize=8, fontweight='bold')
         
         plt.tight_layout()
         st.pyplot(fig)
@@ -188,16 +318,25 @@ with tab2:
         ax1.grid(axis='y', alpha=0.3)
         ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x/1000:.0f}K'))
         
-        # Change chart
-        colors = ['#2ecc71' if x < 0 else '#e74c3c' for x in tb_sorted['Change ($)']]
-        ax2.barh(range(len(tb_sorted)), tb_sorted['Change ($)'], color=colors, alpha=0.7)
+        # Change chart - flip sign so increases show as negative (money spent more)
+        change_values = -tb_sorted['Change ($)']  # Flip sign
+        colors = ['#e74c3c' if x < 0 else '#2ecc71' for x in change_values]
+        bars = ax2.barh(range(len(tb_sorted)), change_values, color=colors, alpha=0.7)
         ax2.set_yticks(range(len(tb_sorted)))
         ax2.set_yticklabels(tb_sorted['Vertical'], fontsize=9)
         ax2.set_xlabel('Change ($)', fontsize=10, fontweight='bold')
-        ax2.set_title('Change from Sep to Oct', fontsize=12, fontweight='bold')
+        ax2.set_title('Change from Sep to Oct (Negative = Spent More)', fontsize=12, fontweight='bold')
         ax2.axvline(x=0, color='black', linestyle='--', linewidth=0.8)
         ax2.grid(axis='x', alpha=0.3)
         ax2.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x/1000:.0f}K'))
+        
+        # Add value labels on bars
+        for i, (bar, val) in enumerate(zip(bars, change_values)):
+            width = bar.get_width()
+            label_x = width if width >= 0 else width
+            ax2.text(label_x, bar.get_y() + bar.get_height()/2, 
+                    f'${abs(val):,.0f}', ha='left' if width >= 0 else 'right', 
+                    va='center', fontsize=8, fontweight='bold')
         
         plt.tight_layout()
         st.pyplot(fig)
